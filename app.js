@@ -16,7 +16,10 @@
     publicNotes: "macNotes.publicNotes.v1",
     vault: "macNotes.vault.v1",
     vaultHash: "macNotes.vaultHash.v1",
-    preferences: "macNotes.preferences.v1"
+    preferences: "macNotes.preferences.v1",
+    pending: "macNotes.syncPending.v1",
+    cloudVault: "macNotes.cloudVault.v1",
+    migratedUsers: "macNotes.migratedUsers.v1"
   };
 
   const DEFAULT_PREFS = {
@@ -34,7 +37,13 @@
     filter: "all",
     query: "",
     saveTimer: null,
-    prefs: { ...DEFAULT_PREFS }
+    prefs: { ...DEFAULT_PREFS },
+    supabase: null,
+    user: null,
+    pending: [],
+    syncBusy: false,
+    cloudVaultRows: [],
+    handledUserId: null
   };
 
   // ---------- DOM ----------
@@ -59,6 +68,9 @@
   const appShell = $("#appShell");
   const mobileMenuBtn = $("#mobileMenuBtn");
   const sidebarBackdrop = $("#sidebarBackdrop");
+  const syncStatus = $("#syncStatus");
+  const accountBtn = $("#accountBtn");
+  const accountLabel = $("#accountLabel");
 
   const mobileSidebarQuery = window.matchMedia("(max-width: 620px)");
 
@@ -176,7 +188,7 @@
   }
 
   function vaultExists() {
-    return Boolean(localStorage.getItem(KEYS.vaultHash));
+    return Boolean(localStorage.getItem(KEYS.vaultHash)) || state.cloudVaultRows.length > 0;
   }
 
   function verifyVaultPasscode(passcode) {
@@ -192,6 +204,7 @@
   // ---------- Storage ----------
   function loadStorage() {
     state.publicNotes = safeParse(localStorage.getItem(KEYS.publicNotes), []);
+    state.cloudVaultRows = safeParse(localStorage.getItem(KEYS.cloudVault), []);
     state.prefs = {
       ...DEFAULT_PREFS,
       ...safeParse(localStorage.getItem(KEYS.preferences), {})
@@ -231,6 +244,166 @@
     const text = kb > 1024 ? `${(kb / 1024).toFixed(2)} MB` : `${kb.toFixed(1)} KB`;
     $("#storageDetail").textContent = `Approximate app storage used: ${text}`;
     storageStatus.textContent = `Saved locally · ${text}`;
+  }
+
+  // ---------- Cloud sync ----------
+  function configuredSupabase() {
+    const config = window.MAC_NOTES_SUPABASE_CONFIG;
+    return Boolean(config?.url && config?.anonKey && !config.url.includes("YOUR_") && window.supabase);
+  }
+
+  function setSyncStatus(status) {
+    const labels = { local: "Local only", saving: "Saving…", synced: "Synced", offline: "Offline", error: "Sync error" };
+    syncStatus.textContent = labels[status] || status;
+    syncStatus.dataset.state = status;
+  }
+
+  function updateAccountUi() {
+    accountLabel.textContent = state.user ? (state.user.email || "Account") : "Sign in";
+    accountBtn.title = state.user ? "Account and sync" : "Sign in to sync notes";
+    accountBtn.classList.toggle("signed-in", Boolean(state.user));
+  }
+
+  function rowForNote(note) {
+    if (note.vault) {
+      if (!state.vaultPasscode) throw new Error("Unlock the vault before syncing private notes.");
+      return { id: note.id, user_id: state.user.id, title: "", content: "", category: "", tags: [], pinned: false,
+        is_vault: true, encrypted_payload: encryptObject(note, state.vaultPasscode), created_at: note.createdAt, updated_at: note.updatedAt };
+    }
+    return { id: note.id, user_id: state.user.id, title: note.title || "", content: note.content || "", category: note.category || "",
+      tags: note.tags || [], pinned: Boolean(note.pinned), is_vault: false, encrypted_payload: null, created_at: note.createdAt, updated_at: note.updatedAt };
+  }
+
+  function noteFromRow(row) {
+    return { id: row.id, title: row.title || "", content: row.content || "", category: row.category || "", tags: Array.isArray(row.tags) ? row.tags : [],
+      pinned: Boolean(row.pinned), vault: false, createdAt: row.created_at, updatedAt: row.updated_at };
+  }
+
+  function pendingKey() { return `${KEYS.pending}:${state.user?.id || "anonymous"}`; }
+  function savePending() { localStorage.setItem(pendingKey(), JSON.stringify(state.pending)); }
+  function queueOperation(operation) {
+    if (!state.user) return;
+    state.pending = state.pending.filter((item) => !(item.type === operation.type && item.id === operation.id));
+    state.pending.push(operation);
+    savePending();
+    syncPending();
+  }
+  function queueUpsert(note) {
+    if (!state.user) return;
+    try { queueOperation({ type: "upsert", id: note.id, row: rowForNote(note) }); }
+    catch (error) { setSyncStatus("error"); showToast(error.message); }
+  }
+  function queueDelete(id) { if (state.user) queueOperation({ type: "delete", id }); }
+
+  async function syncPending() {
+    if (!state.supabase || !state.user) { setSyncStatus("local"); return; }
+    if (!navigator.onLine) { setSyncStatus("offline"); return; }
+    if (state.syncBusy || !state.pending.length) { if (!state.pending.length) setSyncStatus("synced"); return; }
+    state.syncBusy = true; setSyncStatus("saving");
+    try {
+      while (state.pending.length) {
+        const operation = state.pending[0];
+        if (operation.type === "delete") {
+          const { error } = await state.supabase.from("notes").delete().eq("id", operation.id);
+          if (error) throw error;
+        } else {
+          const { data: remote, error: readError } = await state.supabase.from("notes").select("updated_at").eq("id", operation.id).maybeSingle();
+          if (readError) throw readError;
+          if (remote && new Date(remote.updated_at) > new Date(operation.row.updated_at)) {
+            state.pending.shift(); savePending(); setSyncStatus("error"); showToast("Sync conflict: newer cloud note kept"); continue;
+          }
+          const { error } = await state.supabase.from("notes").upsert(operation.row, { onConflict: "id" });
+          if (error) throw error;
+        }
+        state.pending.shift(); savePending();
+      }
+      setSyncStatus("synced");
+    } catch (error) { console.error("Sync failed", error); setSyncStatus(navigator.onLine ? "error" : "offline"); }
+    finally { state.syncBusy = false; }
+  }
+
+  async function loadCloudNotes() {
+    if (!state.supabase || !state.user || !navigator.onLine) return;
+    setSyncStatus("saving");
+    const { data, error } = await state.supabase.from("notes").select("*").order("updated_at", { ascending: false });
+    if (error) { console.error(error); setSyncStatus("error"); return; }
+    const publicRows = data.filter((row) => !row.is_vault);
+    state.cloudVaultRows = data.filter((row) => row.is_vault);
+    localStorage.setItem(KEYS.cloudVault, JSON.stringify(state.cloudVaultRows));
+    if (publicRows.length) { state.publicNotes = publicRows.map(noteFromRow); persistPublic(); }
+    renderAll(); setSyncStatus("synced");
+  }
+
+  async function migrateLocalNotes() {
+    flushActiveNote();
+    if (!state.user) return;
+    const notes = [...state.publicNotes];
+    if (state.vaultUnlocked) notes.push(...state.vaultNotes);
+    if (!notes.length) { markMigrated(); return; }
+    setSyncStatus("saving");
+    try {
+      const rows = notes.map(rowForNote);
+      const { error } = await state.supabase.from("notes").upsert(rows, { onConflict: "id" });
+      if (error) throw error;
+      const { data, error: verifyError } = await state.supabase.from("notes").select("id").in("id", notes.map((note) => note.id));
+      if (verifyError || data.length !== notes.length) throw verifyError || new Error("Migration verification failed");
+      markMigrated(); state.pending = []; savePending(); setSyncStatus("synced"); showToast("Local notes migrated and verified");
+    } catch (error) { console.error(error); setSyncStatus("error"); showToast("Migration failed; local notes were kept"); }
+  }
+  function migrationKey() { return `${KEYS.migratedUsers}:${state.user?.id || ""}`; }
+  function markMigrated() { localStorage.setItem(migrationKey(), "true"); }
+  function hasLocalNotes() {
+    return state.publicNotes.some((note) => note.title !== "Welcome to Mac Notes") || Boolean(localStorage.getItem(KEYS.vault));
+  }
+
+  function setupRealtime() {
+    if (!state.supabase || !state.user) return;
+    state.supabase.removeAllChannels();
+    state.supabase.channel(`notes:${state.user.id}`).on("postgres_changes", {
+      event: "*", schema: "public", table: "notes", filter: `user_id=eq.${state.user.id}`
+    }, (change) => {
+      if (change.eventType === "DELETE") {
+        state.publicNotes = state.publicNotes.filter((note) => note.id !== change.old.id);
+        state.cloudVaultRows = state.cloudVaultRows.filter((row) => row.id !== change.old.id);
+        if (state.vaultUnlocked) state.vaultNotes = state.vaultNotes.filter((note) => note.id !== change.old.id);
+        localStorage.setItem(KEYS.cloudVault, JSON.stringify(state.cloudVaultRows));
+      } else if (change.new.is_vault) {
+        state.cloudVaultRows = [...state.cloudVaultRows.filter((row) => row.id !== change.new.id), change.new];
+        localStorage.setItem(KEYS.cloudVault, JSON.stringify(state.cloudVaultRows));
+      } else {
+        const incoming = noteFromRow(change.new);
+        const local = state.publicNotes.find((note) => note.id === incoming.id);
+        if (!local || new Date(incoming.updatedAt) >= new Date(local.updatedAt)) {
+          state.publicNotes = [incoming, ...state.publicNotes.filter((note) => note.id !== incoming.id)];
+          persistPublic();
+        }
+      }
+      renderAll(); setSyncStatus("synced");
+    }).subscribe();
+  }
+
+  async function handleSignedIn() {
+    if (!state.user || state.handledUserId === state.user.id) return;
+    state.handledUserId = state.user.id;
+    state.pending = safeParse(localStorage.getItem(pendingKey()), []);
+    updateAccountUi();
+    setupRealtime();
+    if (hasLocalNotes() && !localStorage.getItem(migrationKey())) {
+      $("#migrationText").textContent = state.vaultUnlocked
+        ? "Your local public and unlocked vault notes can be uploaded. Vault notes remain encrypted before upload. Local copies stay until verification succeeds."
+        : "Your local public notes can be uploaded now. Unlock the vault first if you also want to migrate private notes. Local copies stay until verification succeeds.";
+      if (!$("#migrationDialog").open) $("#migrationDialog").showModal();
+    } else { await loadCloudNotes(); await syncPending(); }
+  }
+
+  async function initCloud() {
+    if (!configuredSupabase()) { setSyncStatus("local"); updateAccountUi(); return; }
+    const config = window.MAC_NOTES_SUPABASE_CONFIG;
+    state.supabase = window.supabase.createClient(config.url, config.anonKey, { auth: { persistSession: true, autoRefreshToken: true } });
+    const { data: { session } } = await state.supabase.auth.getSession();
+    state.user = session?.user || null; updateAccountUi();
+    state.supabase.auth.onAuthStateChange((_event, session) => { state.user = session?.user || null; updateAccountUi(); if (state.user) handleSignedIn(); else { state.handledUserId = null; setSyncStatus("local"); }; });
+    if (state.user) await handleSignedIn(); else setSyncStatus("local");
   }
 
   // ---------- Notes ----------
@@ -281,6 +454,7 @@
     }
 
     state.activeNoteId = note.id;
+    queueUpsert(note);
     state.filter = wantsVault ? "vault" : "all";
     syncFilterButtons();
     renderAll();
@@ -313,6 +487,7 @@
     note.updatedAt = nowIso();
 
     persistCurrentMode();
+    queueUpsert(note);
   }
 
   function scheduleSave() {
@@ -357,6 +532,7 @@
       if (index >= 0) collection.splice(index, 1);
 
       persistCurrentMode();
+      queueDelete(note.id);
       state.activeNoteId = null;
 
       const next = visibleNotes()[0];
@@ -378,6 +554,7 @@
     note.pinned = !note.pinned;
     note.updatedAt = nowIso();
     persistCurrentMode();
+    queueUpsert(note);
     renderAll();
     showToast(note.pinned ? "Pinned" : "Unpinned");
   }
@@ -402,6 +579,8 @@
       state.activeMode = "vault";
       state.activeNoteId = note.id;
       state.filter = "vault";
+      queueDelete(note.id);
+      queueUpsert(note);
       syncFilterButtons();
       renderAll();
       showToast("Moved to private vault");
@@ -416,6 +595,8 @@
       state.activeMode = "public";
       state.activeNoteId = note.id;
       state.filter = "all";
+      queueDelete(note.id);
+      queueUpsert(note);
       syncFilterButtons();
       renderAll();
       showToast("Moved to public notes");
@@ -677,16 +858,21 @@
         localStorage.setItem(KEYS.vaultHash, sha256(passcode));
         state.vaultPasscode = passcode;
         persistVault();
+        state.vaultNotes.forEach(queueUpsert);
       } else {
-        if (!verifyVaultPasscode(passcode)) {
+        const localHash = localStorage.getItem(KEYS.vaultHash);
+        if (localHash && !verifyVaultPasscode(passcode)) {
           vaultError.textContent = "Incorrect passcode.";
           return;
         }
-
+        const cloudNotes = state.cloudVaultRows.map((row) => decryptObject(row.encrypted_payload, passcode));
         const cipher = localStorage.getItem(KEYS.vault);
-        state.vaultNotes = cipher ? decryptObject(cipher, passcode) : [];
+        const localNotes = cipher ? decryptObject(cipher, passcode) : [];
+        state.vaultNotes = [...cloudNotes, ...localNotes.filter((note) => !cloudNotes.some((cloudNote) => cloudNote.id === note.id))];
+        if (!localHash) localStorage.setItem(KEYS.vaultHash, sha256(passcode));
         state.vaultPasscode = passcode;
         state.vaultUnlocked = true;
+        persistVault();
       }
 
       vaultDialog.close();
@@ -1022,6 +1208,42 @@
     confirmDialog.addEventListener("close", handler);
   });
 
+  // ---------- Account / connectivity ----------
+  let authMode = "signin";
+  function openAuthDialog() {
+    if (!state.supabase) { showToast("Add supabase-config.js to enable sync"); return; }
+    if (state.user) { signOut(); return; }
+    authMode = "signin"; $("#authForm").reset(); $("#authError").textContent = "";
+    $("#authDialogTitle").textContent = "Sync your notes";
+    $("#authDialogText").textContent = "Sign in to securely sync notes across your devices.";
+    $("#authModeBtn").textContent = "Create account"; $("#authSubmitBtn").textContent = "Sign in";
+    $("#authDialog").showModal(); refreshIcons();
+  }
+  $("#authModeBtn").addEventListener("click", () => {
+    authMode = authMode === "signin" ? "signup" : "signin";
+    $("#authDialogTitle").textContent = authMode === "signup" ? "Create your account" : "Sync your notes";
+    $("#authDialogText").textContent = authMode === "signup" ? "Use an email and password to keep your notes available on your devices." : "Sign in to securely sync notes across your devices.";
+    $("#authModeBtn").textContent = authMode === "signup" ? "I already have an account" : "Create account";
+    $("#authSubmitBtn").textContent = authMode === "signup" ? "Create account" : "Sign in";
+    $("#authPassword").autocomplete = authMode === "signup" ? "new-password" : "current-password";
+  });
+  $("#authForm").addEventListener("submit", async (event) => {
+    event.preventDefault(); const email = $("#authEmail").value.trim(); const password = $("#authPassword").value;
+    const action = authMode === "signup" ? state.supabase.auth.signUp({ email, password }) : state.supabase.auth.signInWithPassword({ email, password });
+    $("#authSubmitBtn").disabled = true; const { data, error } = await action; $("#authSubmitBtn").disabled = false;
+    if (error) { $("#authError").textContent = error.message; return; }
+    if (authMode === "signup" && !data.session) { $("#authError").textContent = "Check your email to confirm your account, then sign in."; return; }
+    $("#authDialog").close();
+  });
+  async function signOut() {
+    flushActiveNote(); await state.supabase.auth.signOut(); state.user = null; state.handledUserId = null; state.pending = []; updateAccountUi(); showToast("Signed out; local cache remains on this device");
+  }
+  accountBtn.addEventListener("click", openAuthDialog);
+  $("#migrationSkipBtn").addEventListener("click", async () => { $("#migrationDialog").close(); markMigrated(); await loadCloudNotes(); });
+  $("#migrationStartBtn").addEventListener("click", async () => { $("#migrationDialog").close(); await migrateLocalNotes(); });
+  window.addEventListener("online", () => { if (state.user) { loadCloudNotes().then(syncPending); } });
+  window.addEventListener("offline", () => { if (state.user) setSyncStatus("offline"); });
+
   // ---------- Events ----------
   $("#newNoteBtn").addEventListener("click", () => createNewNote());
   $("#emptyNewNoteBtn").addEventListener("click", () => createNewNote());
@@ -1112,6 +1334,7 @@
 
     syncFilterButtons();
     renderAll();
+    initCloud();
   }
 
   window.addEventListener("DOMContentLoaded", init);

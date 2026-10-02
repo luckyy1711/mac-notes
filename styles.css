@@ -147,6 +147,24 @@ input:focus-visible,
   gap: 4px;
 }
 
+.account-btn {
+  min-height: 32px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 9px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.025);
+  color: var(--text-3);
+  cursor: pointer;
+  font: inherit;
+  font-size: 10px;
+}
+
+.account-btn svg { width: 14px; height: 14px; }
+.account-btn.signed-in { color: #a9d8b9; }
+
 .workspace {
   display: grid;
   grid-template-columns: var(--sidebar-width) minmax(0, 1fr);
@@ -442,11 +460,17 @@ kbd {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 8px;
   padding: 0 13px;
   border-top: 1px solid rgba(255, 255, 255, 0.055);
   color: #66666a;
   font-size: 10.5px;
 }
+
+.sync-status { color: #7d7d82; white-space: nowrap; }
+.sync-status[data-state="synced"] { color: #8cb99a; }
+.sync-status[data-state="saving"] { color: #d0ad59; }
+.sync-status[data-state="offline"], .sync-status[data-state="error"] { color: #d89083; }
 
 .text-btn {
   border: 0;
@@ -958,6 +982,9 @@ kbd {
   margin-top: 17px;
 }
 
+.auth-actions { align-items: center; }
+.auth-actions .text-btn { margin-right: auto; }
+
 .settings-card {
   max-height: min(760px, calc(100vh - 40px));
   overflow-y: auto;
@@ -1140,6 +1167,18 @@ kbd {
     border-radius: 12px;
   }
 
+  .account-btn {
+    width: 44px;
+    height: 44px;
+    justify-content: center;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    border-radius: 12px;
+  }
+
+  .account-btn span { display: none; }
+
   .sidebar {
     position: fixed;
     z-index: 30;
@@ -1274,6 +1313,8 @@ kbd {
     min-height: 48px;
     padding: 0 16px;
   }
+
+  .sync-status { margin-left: auto; }
 
   .text-btn {
     min-width: 44px;
