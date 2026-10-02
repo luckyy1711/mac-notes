@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#121212" />
+  <meta name="description" content="A lightweight macOS-inspired notes app with encrypted private vault notes." />
+  <title>Mac Notes</title>
+
+  <!-- Lucide: lightweight icon set -->
+  <script src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js" defer></script>
+
+  <!-- CryptoJS: AES encryption for private vault notes -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.2.0/crypto-js.min.js"
+          integrity="sha512-KALDyEYgpY34OzJnqx/3IHFb8vXqP0qv3fSTjIByLnlqofQZxRkQTZlH8gb8Y5XbLyg0yJnGZq2ykQx6Lw8QJg=="
+          crossorigin="anonymous"
+          referrerpolicy="no-referrer"></script>
+
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="app-shell" id="appShell">
+    <!-- macOS-style top bar -->
+    <header class="titlebar">
+      <div class="traffic-lights" aria-label="Window controls">
+        <span class="traffic red" title="Close"></span>
+        <span class="traffic yellow" title="Minimize"></span>
+        <span class="traffic green" title="Zoom"></span>
+      </div>
+
+      <div class="titlebar-center">
+        <span class="app-mark"><i data-lucide="notebook-tabs"></i></span>
+        <strong>Mac Notes</strong>
+        <span class="mode-pill" id="modePill">Public</span>
+      </div>
+
+      <div class="titlebar-actions">
+        <button class="icon-btn" id="lockBtn" title="Lock vault (Ctrl+L)" aria-label="Lock vault">
+          <i data-lucide="lock"></i>
+        </button>
+        <button class="icon-btn" id="settingsBtn" title="Settings" aria-label="Settings">
+          <i data-lucide="settings-2"></i>
+        </button>
+      </div>
+    </header>
+
+    <main class="workspace">
+      <!-- LEFT SIDEBAR -->
+      <aside class="sidebar glass-panel">
+        <div class="sidebar-header">
+          <button class="new-note-btn" id="newNoteBtn">
+            <i data-lucide="square-pen"></i>
+            <span>New Note</span>
+            <kbd>Ctrl N</kbd>
+          </button>
+
+          <label class="search-wrap" for="searchInput">
+            <i data-lucide="search"></i>
+            <input
+              id="searchInput"
+              type="search"
+              placeholder="Search notes…"
+              autocomplete="off"
+              spellcheck="false"
+            />
+            <kbd>Ctrl F</kbd>
+          </label>
+        </div>
+
+        <nav class="filter-nav" aria-label="Note filters">
+          <button class="filter-btn active" data-filter="all">
+            <span><i data-lucide="files"></i> All Notes</span>
+            <span class="count" id="allCount">0</span>
+          </button>
+          <button class="filter-btn" data-filter="pinned">
+            <span><i data-lucide="pin"></i> Pinned</span>
+            <span class="count" id="pinnedCount">0</span>
+          </button>
+          <button class="filter-btn" data-filter="vault" id="vaultFilterBtn">
+            <span><i data-lucide="shield-check"></i> Private Vault</span>
+            <span class="count" id="vaultCount">—</span>
+          </button>
+        </nav>
+
+        <div class="section-label">
+          <span>Notes</span>
+          <span id="noteListStatus"></span>
+        </div>
+
+        <div class="note-list" id="noteList" aria-live="polite"></div>
+
+        <div class="sidebar-footer">
+          <span id="storageStatus">Saved locally</span>
+          <button class="text-btn" id="quickExportBtn">Export</button>
+        </div>
+      </aside>
+
+      <!-- EDITOR -->
+      <section class="editor-panel glass-panel">
+        <div class="editor-empty" id="emptyState">
+          <div class="empty-icon"><i data-lucide="notebook-pen"></i></div>
+          <h1>Select a note</h1>
+          <p>Create a new note or choose one from the sidebar.</p>
+          <button class="primary-btn" id="emptyNewNoteBtn">
+            <i data-lucide="plus"></i> Create note
+          </button>
+        </div>
+
+        <div class="editor-wrap hidden" id="editorWrap">
+          <div class="note-toolbar-top">
+            <div class="note-location">
+              <span class="privacy-badge" id="privacyBadge">
+                <i data-lucide="globe-2"></i>
+                Public note
+              </span>
+              <span class="save-state" id="saveState">Saved</span>
+            </div>
+
+            <div class="note-actions">
+              <button class="icon-btn" id="pinBtn" title="Pin note" aria-label="Pin note">
+                <i data-lucide="pin"></i>
+              </button>
+              <button class="icon-btn" id="moveVaultBtn" title="Move to private vault" aria-label="Move note to private vault">
+                <i data-lucide="shield"></i>
+              </button>
+              <button class="icon-btn danger" id="deleteBtn" title="Delete note" aria-label="Delete note">
+                <i data-lucide="trash-2"></i>
+              </button>
+            </div>
+          </div>
+
+          <div class="metadata-row">
+            <input
+              id="noteTitle"
+              class="note-title"
+              type="text"
+              placeholder="Untitled"
+              maxlength="140"
+              autocomplete="off"
+            />
+
+            <div class="meta-fields">
+              <label class="compact-field">
+                <i data-lucide="folder"></i>
+                <input id="categoryInput" type="text" placeholder="Category" maxlength="40" />
+              </label>
+
+              <label class="compact-field tags-field">
+                <i data-lucide="tags"></i>
+                <input id="tagsInput" type="text" placeholder="Tags: work, ideas" maxlength="160" />
+              </label>
+            </div>
+          </div>
+
+          <!-- Rich text toolbar -->
+          <div class="format-toolbar" id="formatToolbar">
+            <button data-command="bold" title="Bold"><i data-lucide="bold"></i></button>
+            <button data-command="italic" title="Italic"><i data-lucide="italic"></i></button>
+            <span class="toolbar-separator"></span>
+            <button data-block="h1" title="Heading 1">H1</button>
+            <button data-block="h2" title="Heading 2">H2</button>
+            <button data-block="p" title="Paragraph">P</button>
+            <span class="toolbar-separator"></span>
+            <button id="checklistBtn" title="Insert checklist"><i data-lucide="list-checks"></i></button>
+            <button id="codeBlockBtn" title="Code block"><i data-lucide="square-code"></i></button>
+            <button data-command="insertUnorderedList" title="Bullet list"><i data-lucide="list"></i></button>
+            <span class="toolbar-spacer"></span>
+            <button id="clearFormatBtn" title="Clear formatting"><i data-lucide="eraser"></i></button>
+          </div>
+
+          <article
+            id="editor"
+            class="editor"
+            contenteditable="true"
+            spellcheck="true"
+            data-placeholder="Start writing…"
+          ></article>
+
+          <footer class="editor-footer">
+            <span id="updatedAt">—</span>
+            <span id="wordCount">0 words</span>
+          </footer>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <!-- VAULT DIALOG -->
+  <dialog class="modal" id="vaultDialog">
+    <form method="dialog" class="modal-card" id="vaultForm">
+      <div class="modal-icon gold"><i data-lucide="lock-keyhole"></i></div>
+      <h2 id="vaultDialogTitle">Unlock Private Vault</h2>
+      <p id="vaultDialogText">Enter your private vault passcode.</p>
+
+      <label class="modal-field">
+        <span>Passcode</span>
+        <input id="vaultPasscodeInput" type="password" minlength="4" autocomplete="current-password" required />
+      </label>
+
+      <label class="modal-field hidden" id="vaultConfirmWrap">
+        <span>Confirm passcode</span>
+        <input id="vaultConfirmInput" type="password" minlength="4" autocomplete="new-password" />
+      </label>
+
+      <p class="modal-error" id="vaultError"></p>
+
+      <div class="modal-actions">
+        <button value="cancel" class="secondary-btn">Cancel</button>
+        <button type="submit" value="default" class="primary-btn" id="vaultSubmitBtn">Unlock</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- SETTINGS DIALOG -->
+  <dialog class="modal wide" id="settingsDialog">
+    <div class="modal-card settings-card">
+      <div class="settings-heading">
+        <div>
+          <h2>Settings & Backup</h2>
+          <p>Everything is stored locally in this browser unless you export it.</p>
+        </div>
+        <button class="icon-btn" id="closeSettingsBtn" aria-label="Close settings">
+          <i data-lucide="x"></i>
+        </button>
+      </div>
+
+      <section class="settings-section">
+        <div>
+          <h3>Private Vault</h3>
+          <p>Private notes are AES-encrypted before being written to localStorage.</p>
+        </div>
+        <div class="settings-actions">
+          <button class="secondary-btn" id="unlockVaultSettingsBtn">Unlock vault</button>
+          <button class="secondary-btn" id="changeVaultPassBtn">Change vault passcode</button>
+        </div>
+      </section>
+
+      <section class="settings-section">
+        <div>
+          <h3>Secret search trigger</h3>
+          <p>Typing this exact trigger in search opens the vault unlock screen.</p>
+        </div>
+        <div class="settings-inline">
+          <input id="vaultTriggerInput" type="text" value="::vault" maxlength="30" />
+          <button class="secondary-btn" id="saveTriggerBtn">Save</button>
+        </div>
+      </section>
+
+      <section class="settings-section">
+        <div>
+          <h3>Backup</h3>
+          <p>JSON preserves formatting and vault encryption. TXT exports readable public notes and unlocked vault notes.</p>
+        </div>
+        <div class="settings-actions">
+          <button class="secondary-btn" id="exportJsonBtn"><i data-lucide="download"></i> Export JSON</button>
+          <button class="secondary-btn" id="exportTxtBtn"><i data-lucide="file-text"></i> Export TXT</button>
+          <button class="secondary-btn" id="importBtn"><i data-lucide="upload"></i> Import JSON</button>
+          <input id="importFileInput" type="file" accept=".json,application/json" hidden />
+        </div>
+      </section>
+
+      <section class="settings-section">
+        <div>
+          <h3>Storage</h3>
+          <p id="storageDetail">Calculating…</p>
+        </div>
+        <button class="danger-btn" id="clearAllBtn">Erase all local data</button>
+      </section>
+
+      <section class="settings-section github-note">
+        <div>
+          <h3>GitHub Pages & cloud sync</h3>
+          <p>
+            Publish these static files on GitHub Pages. For private cloud backup, do not put a GitHub token in this front-end.
+            Use manual JSON backup or add a server-side/GitHub Actions workflow later.
+          </p>
+        </div>
+      </section>
+    </div>
+  </dialog>
+
+  <!-- CONFIRM DIALOG -->
+  <dialog class="modal" id="confirmDialog">
+    <form method="dialog" class="modal-card">
+      <div class="modal-icon danger-icon"><i data-lucide="triangle-alert"></i></div>
+      <h2 id="confirmTitle">Delete note?</h2>
+      <p id="confirmText">This action cannot be undone.</p>
+      <div class="modal-actions">
+        <button value="cancel" class="secondary-btn">Cancel</button>
+        <button value="confirm" class="danger-btn">Delete</button>
+      </div>
+    </form>
+  </dialog>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>
