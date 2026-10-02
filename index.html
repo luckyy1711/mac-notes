@@ -22,6 +22,9 @@
   <div class="app-shell" id="appShell">
     <!-- macOS-style top bar -->
     <header class="titlebar">
+      <button class="icon-btn mobile-menu-btn" id="mobileMenuBtn" type="button" aria-label="Open notes sidebar" aria-controls="sidebar" aria-expanded="false">
+        <i data-lucide="menu"></i>
+      </button>
       <div class="traffic-lights" aria-label="Window controls">
         <span class="traffic red" title="Close"></span>
         <span class="traffic yellow" title="Minimize"></span>
@@ -46,7 +49,7 @@
 
     <main class="workspace">
       <!-- LEFT SIDEBAR -->
-      <aside class="sidebar glass-panel">
+      <aside class="sidebar glass-panel" id="sidebar" aria-label="Notes sidebar">
         <div class="sidebar-header">
           <button class="new-note-btn" id="newNoteBtn">
             <i data-lucide="square-pen"></i>
@@ -184,6 +187,8 @@
       </section>
     </main>
   </div>
+
+  <button class="sidebar-backdrop" id="sidebarBackdrop" type="button" tabindex="-1" aria-label="Close notes sidebar"></button>
 
   <!-- VAULT DIALOG -->
   <dialog class="modal" id="vaultDialog">
