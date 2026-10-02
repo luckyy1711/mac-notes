@@ -8,5 +8,5 @@
  */
 window.MAC_NOTES_SUPABASE_CONFIG = {
   url: "https://lqjepymsfcpmnpsesmpl.supabase.co",
-  anonKey: "YOUR_ANON_OR_PUBLISHABLE_KEY"
+  anonKey: "sb_publishable_XCAreIRanl6FpCpSfpVixQ_6ysWLMKO"
 };
