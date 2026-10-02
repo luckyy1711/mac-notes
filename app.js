@@ -56,6 +56,26 @@
   const privacyBadge = $("#privacyBadge");
   const storageStatus = $("#storageStatus");
   const noteListStatus = $("#noteListStatus");
+  const appShell = $("#appShell");
+  const mobileMenuBtn = $("#mobileMenuBtn");
+  const sidebarBackdrop = $("#sidebarBackdrop");
+
+  const mobileSidebarQuery = window.matchMedia("(max-width: 620px)");
+
+  function isMobileSidebar() {
+    return mobileSidebarQuery.matches;
+  }
+
+  function setMobileSidebar(open) {
+    if (!isMobileSidebar()) return;
+    appShell.classList.toggle("sidebar-open", open);
+    mobileMenuBtn.setAttribute("aria-expanded", String(open));
+    mobileMenuBtn.setAttribute("aria-label", open ? "Close notes sidebar" : "Open notes sidebar");
+  }
+
+  function closeMobileSidebar() {
+    setMobileSidebar(false);
+  }
 
   const vaultDialog = $("#vaultDialog");
   const vaultForm = $("#vaultForm");
@@ -264,6 +284,7 @@
     syncFilterButtons();
     renderAll();
     noteTitle.focus();
+    closeMobileSidebar();
   }
 
   function selectNote(id, mode) {
@@ -277,6 +298,7 @@
     }
 
     renderAll();
+    closeMobileSidebar();
   }
 
   function flushActiveNote() {
@@ -793,6 +815,7 @@
   $$(".filter-btn").forEach((button) => {
     button.addEventListener("click", () => {
       const filter = button.dataset.filter;
+      closeMobileSidebar();
 
       if (filter === "vault" && !state.vaultUnlocked) {
         openVaultDialog("unlock", () => {
@@ -1025,11 +1048,29 @@
 
   editor.addEventListener("input", scheduleSave);
 
+  mobileMenuBtn.addEventListener("click", () => {
+    setMobileSidebar(!appShell.classList.contains("sidebar-open"));
+  });
+  sidebarBackdrop.addEventListener("click", closeMobileSidebar);
+  mobileSidebarQuery.addEventListener("change", () => {
+    if (!isMobileSidebar()) {
+      appShell.classList.remove("sidebar-open");
+      mobileMenuBtn.setAttribute("aria-expanded", "false");
+      mobileMenuBtn.setAttribute("aria-label", "Open notes sidebar");
+    }
+  });
+
   // Save before leaving/reloading.
   window.addEventListener("beforeunload", flushActiveNote);
 
   // Keyboard shortcuts.
   document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && appShell.classList.contains("sidebar-open")) {
+      closeMobileSidebar();
+      mobileMenuBtn.focus();
+      return;
+    }
+
     if (!(event.ctrlKey || event.metaKey)) return;
 
     const key = event.key.toLowerCase();
