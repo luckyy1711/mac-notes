@@ -1,4 +1,4 @@
-/* Copy this file to supabase-config.js and fill in Supabase Dashboard → Project Settings → API.
+/* This is a reference copy of the tracked browser configuration.
  * The project URL and anon/publishable key are public browser configuration;
  * Row Level Security protects the data. Never put a service_role key here. */
 window.MAC_NOTES_SUPABASE_CONFIG = {

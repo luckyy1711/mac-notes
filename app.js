@@ -249,7 +249,7 @@
   // ---------- Cloud sync ----------
   function configuredSupabase() {
     const config = window.MAC_NOTES_SUPABASE_CONFIG;
-    return Boolean(config?.url && config?.anonKey && !config.url.includes("YOUR_") && window.supabase);
+    return Boolean(config?.url && config?.anonKey && !config.url.includes("YOUR_") && !config.anonKey.includes("YOUR_") && window.supabase);
   }
 
   function setSyncStatus(status) {
@@ -1211,7 +1211,7 @@
   // ---------- Account / connectivity ----------
   let authMode = "signin";
   function openAuthDialog() {
-    if (!state.supabase) { showToast("Add supabase-config.js to enable sync"); return; }
+    if (!state.supabase) { showToast("Supabase is not configured"); return; }
     if (state.user) { signOut(); return; }
     authMode = "signin"; $("#authForm").reset(); $("#authError").textContent = "";
     $("#authDialogTitle").textContent = "Sync your notes";
