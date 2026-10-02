@@ -69,6 +69,7 @@
   function setMobileSidebar(open) {
     if (!isMobileSidebar()) return;
     appShell.classList.toggle("sidebar-open", open);
+    sidebarBackdrop.classList.toggle("is-open", open);
     mobileMenuBtn.setAttribute("aria-expanded", String(open));
     mobileMenuBtn.setAttribute("aria-label", open ? "Close notes sidebar" : "Open notes sidebar");
   }
@@ -1055,6 +1056,7 @@
   mobileSidebarQuery.addEventListener("change", () => {
     if (!isMobileSidebar()) {
       appShell.classList.remove("sidebar-open");
+      sidebarBackdrop.classList.remove("is-open");
       mobileMenuBtn.setAttribute("aria-expanded", "false");
       mobileMenuBtn.setAttribute("aria-label", "Open notes sidebar");
     }

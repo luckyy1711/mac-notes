@@ -1175,7 +1175,7 @@ kbd {
     transition: opacity 220ms ease;
   }
 
-  .sidebar-open + .sidebar-backdrop {
+  .sidebar-backdrop.is-open {
     display: block;
     opacity: 1;
     pointer-events: auto;
