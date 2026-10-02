@@ -15,8 +15,9 @@ Then visit `http://localhost:8000`.
 
 1. Create a Supabase project, then open **SQL Editor** and run [`supabase/schema.sql`](supabase/schema.sql). It creates the `notes` table, index, enables RLS, and adds owner-only select/insert/update/delete policies, and enables `notes` in the Realtime publication.
 2. In **Authentication → Providers**, enable Email. For password sign-up, configure the site URL and any deployed redirect URLs in **Authentication → URL Configuration**. Email confirmation is recommended for production; when it is enabled, new users must confirm their email before first sign-in.
-3. Copy `supabase-config.example.js` to `supabase-config.js`. Set `url` to Project URL and `anonKey` to the dashboard's anon/publishable key. These are safe public browser values; **never** use the `service_role` key in this app. `supabase-config.js` is ignored by Git.
-4. Deploy the static files (`index.html`, `styles.css`, `app.js`, and the created `supabase-config.js`) to GitHub Pages, Netlify, or another static host. Add that deployment URL to Supabase Auth redirect URLs.
+3. The repository includes `supabase-config.js`, which contains this project's public browser URL and anon/publishable key. No ignored local configuration file is required for a fresh clone or a static deployment. These browser values are public; **never** replace the configured key with a `service_role` key, database password, or another private credential.
+4. Deploy the repository's static files (`index.html`, `styles.css`, `app.js`, and `supabase-config.js`) to GitHub Pages, Netlify, or another static host. Add that deployment URL to Supabase Auth redirect URLs.
+5. When serving locally, use a static web server (for example `python -m http.server 8000`) rather than opening the HTML file directly. Add `http://localhost:8000` to Supabase Auth redirect URLs if you use email confirmation or other redirect-based Auth flows.
 
 ## Sync and security behavior
 
