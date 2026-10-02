@@ -16,6 +16,10 @@
           crossorigin="anonymous"
           referrerpolicy="no-referrer"></script>
 
+  <!-- Supabase browser client. The URL and anon key live in supabase-config.js. -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="supabase-config.js"></script>
+
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
@@ -38,6 +42,9 @@
       </div>
 
       <div class="titlebar-actions">
+        <button class="account-btn" id="accountBtn" type="button" title="Sign in to sync notes" aria-label="Sign in to sync notes">
+          <i data-lucide="cloud"></i><span id="accountLabel">Sign in</span>
+        </button>
         <button class="icon-btn" id="lockBtn" title="Lock vault (Ctrl+L)" aria-label="Lock vault">
           <i data-lucide="lock"></i>
         </button>
@@ -94,6 +101,7 @@
 
         <div class="sidebar-footer">
           <span id="storageStatus">Saved locally</span>
+          <span class="sync-status" id="syncStatus" role="status" aria-live="polite">Local only</span>
           <button class="text-btn" id="quickExportBtn">Export</button>
         </div>
       </aside>
@@ -214,6 +222,35 @@
         <button type="submit" value="default" class="primary-btn" id="vaultSubmitBtn">Unlock</button>
       </div>
     </form>
+  </dialog>
+
+  <!-- ACCOUNT DIALOG -->
+  <dialog class="modal" id="authDialog">
+    <form class="modal-card" id="authForm">
+      <div class="modal-icon"><i data-lucide="cloud"></i></div>
+      <h2 id="authDialogTitle">Sync your notes</h2>
+      <p id="authDialogText">Sign in to securely sync notes across your devices.</p>
+      <label class="modal-field"><span>Email</span><input id="authEmail" type="email" autocomplete="email" required /></label>
+      <label class="modal-field"><span>Password</span><input id="authPassword" type="password" minlength="6" autocomplete="current-password" required /></label>
+      <p class="modal-error" id="authError"></p>
+      <div class="modal-actions auth-actions">
+        <button type="button" class="text-btn" id="authModeBtn">Create account</button>
+        <button type="submit" class="primary-btn" id="authSubmitBtn">Sign in</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- LOCAL MIGRATION DIALOG -->
+  <dialog class="modal" id="migrationDialog">
+    <div class="modal-card">
+      <div class="modal-icon gold"><i data-lucide="cloud-upload"></i></div>
+      <h2>Move local notes to cloud?</h2>
+      <p id="migrationText">Your existing local notes can be securely uploaded to this account. Local copies are kept until upload is verified.</p>
+      <div class="modal-actions">
+        <button type="button" class="secondary-btn" id="migrationSkipBtn">Keep local</button>
+        <button type="button" class="primary-btn" id="migrationStartBtn">Migrate notes</button>
+      </div>
+    </div>
   </dialog>
 
   <!-- SETTINGS DIALOG -->
