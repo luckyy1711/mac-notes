@@ -1380,3 +1380,50 @@ kbd {
     transition: none;
   }
 }
+
+/* HEADER LAYOUT FIX: larger bar, app title on the left, actions on the right */
+:root {
+  --titlebar-height: 60px;
+}
+
+.titlebar {
+  grid-template-columns: minmax(0, 1fr) auto;
+  padding: 0 18px;
+}
+
+.titlebar-center {
+  grid-column: 1;
+  justify-self: start;
+  justify-content: flex-start;
+}
+
+.titlebar-actions {
+  grid-column: 2;
+  justify-self: end;
+}
+
+@media (max-width: 620px) {
+  .titlebar {
+    grid-template-columns: 44px minmax(0, 1fr) auto;
+  }
+
+  .titlebar-center {
+    grid-column: 2;
+    justify-self: center;
+  }
+
+  .titlebar-actions {
+    grid-column: 3;
+  }
+}
+
+@media (max-width: 380px) {
+  .titlebar {
+    padding-right: 4px;
+    padding-left: 4px;
+  }
+
+  .titlebar-actions {
+    gap: 0;
+  }
+}
